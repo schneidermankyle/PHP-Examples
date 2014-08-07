@@ -56,8 +56,8 @@ class User {
 		// Destroy the active session
 	}
 
-	public function __construct($db) {
-		// Construct the connection.
+	public function __construct() {
+		
 		
 	}
 
