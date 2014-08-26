@@ -24,41 +24,143 @@
 
 class User {
 
+	// Config array
+	private $config = array(
+		'db' => array(
+			'username' => 'root',
+			'password' => 'root',
+			'host' => 'localhost',
+			'db_name' => 'user_system'
+		)
+	);
+
+	// Track all of our errors
 	private $error = array(
 		1 => ''
 	);
 
+	// Objects within the class
+	public $conn;
 
-
-	private function logAttempt() {
-
-	}
-
-	// Public block //
-	public function verifyInput() {
-
-	}
-
-	public function login($username='', $password='', $connection) {
-		// Encrypt information
+	// Create the DB
+	private function createDb() {
+		try {
+			// Create a temporary connection to create database schema
+			$temp = new PDO("mysql:host=" . $this->config['db']['host'] . ";",
+			$this->config['db']['username'],
+			$this->config['db']['password']);
 		
-		// Verify information
-		
-		// set the active session
+			$temp->exec('CREATE DATABASE `' . $this->config['db']['db_name'] . '`;');
 
+			// Release the temp PDO for garbage collection
+			unset($temp);
+
+			// Re-run the construct method to ensure our connection object is set and pointing to proper PDO
+			$this->constructDb();
+
+		} catch (Exception $e) {
+
+			die("There was an error connecting to the database");
+
+		}
 	}
 
-	public function verifySession() {
-		// Check the active session
+	// This method needs to evolve a bit. revisiting this soon.
+	private function constructDb() {
+		try {
+			// Set up the PDO using our config array
+			$conn = new PDO("mysql:host=" . $this->config['db']['host'] . ";dbname=" . $this->config['db']['db_name'],
+			$this->config['db']['username'],
+			$this->config['db']['password']);
+
+			// Set our error modes
+			$conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+			// Return object if connection is true
+			return $conn;
+
+		} catch(Exception $e) {
+
+			if ($e->getCode() == '1049') {
+				// Failed due to database not existing, let's fix that.
+				// Create and connect here
+				$this->createDb();
+
+			}
+
+			return $conn;
+		}
 	}
 
-	public function destroySession() {
-		// Destroy the active session
-	}
-
+	// construct sets up everything we need, such as the db config
 	public function __construct() {
-		
+		$this->conn = $this->constructDb();
 		
 	}
+
+	// Check to see if user is already in the system
+	private function checkUser($user) {
+		
+	}
+
+	// Sanitize user input and prep it for work with DB
+	private function sanitizeInput($input) {
+		// Make sure the input is coming in expected format
+		if (is_array($input)) {
+			foreach($input as $key => $field) {
+				// Figure out what we are testing.
+				switch ($key) {
+					case 'email':
+						// Sanitize the field
+						$email = strip_tags($field);
+						// Do some more 
+						$input['email'] = $email;
+						break;
+					case 'name':
+						$name = strip_tags($field);
+						// Do some more
+						$input['name'] = $name;
+						break;
+				}
+			}
+
+			return $input;
+		}
+	}
+
+	// Create User
+	public function createUser($info) {
+		// Validate user input
+		if ($info['email'] && $info['name']) {
+			
+			// Sanitize the user information
+			$input = $this->sanitizeInput($info);
+
+			// Test
+			var_dump($input);
+
+			// Check if the user is already registered
+
+			// Register user
+
+			// Return 
+
+		}
+
+
+		// Input user information into the database 
+	}
+
+
+	// Login user
+
+	// Verify Login
+
+	// Logout user
+
+
+
+
+
 
 }
