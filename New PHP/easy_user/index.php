@@ -4,8 +4,8 @@
 // General needs of the page
 require './functions/config.php';
 
-// Determine why this file is beeing called.
 
+// Page routing
 $base_url = dirname($_SERVER['PHP_SELF']);
 $page = substr($_SERVER['REQUEST_URI'], strlen($base_url) + 2 );
 

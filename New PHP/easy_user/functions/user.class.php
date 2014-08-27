@@ -179,10 +179,12 @@ class User {
 
 	private function encryptPass($password) {
 		// Encrypt password
+		
 	}
 
 	private function registerUser($user) {
 		// process password
+		
 
 		$register = $this->conn->prepare("INSERT INTO `users` (username, password, email) VALUES (:username, :password, :email)");
 	}
@@ -202,7 +204,7 @@ class User {
 				if ($this->checkUser($input)) {
 
 					// Register user
-
+					
 				}
 			} else {
 				var_dump($this->error[1]);
