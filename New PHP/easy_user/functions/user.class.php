@@ -36,7 +36,22 @@ class User {
 
 	// Track all of our errors
 	private $error = array(
-		1 => ''
+		// User errors
+		1 => array(
+			'101' => array(
+				'error' => 'There was an error validating user information',
+				'trigger' => ''
+			),
+			'102' => array(
+				'error' => 'User is already registered',
+				'trigger' => ''
+			)
+		),
+		// Database Errors
+		2 => array(
+			'error' => 'There was an error connecting to the database',
+			'trigger' => ''
+		)
 	);
 
 	// Objects within the class
@@ -50,7 +65,14 @@ class User {
 			$this->config['db']['username'],
 			$this->config['db']['password']);
 		
-			$temp->exec('CREATE DATABASE `' . $this->config['db']['db_name'] . '`;');
+			$temp->exec('CREATE DATABASE `' . $this->config['db']['db_name'] . '`; 
+				CREATE TABLE IF NOT EXISTS `' . $this->config['db']['db_name'] . '`.`Users` (
+				`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+				`username` VARCHAR(45) NOT NULL,
+				`password` VARCHAR(256) NOT NULL,
+				`email` VARCHAR(254) NULL,
+				PRIMARY KEY (`id`));'
+			);
 
 			// Release the temp PDO for garbage collection
 			unset($temp);
@@ -60,7 +82,8 @@ class User {
 
 		} catch (Exception $e) {
 
-			die("There was an error connecting to the database");
+			$this->error[2]['trigger'] = $e;
+			die($this->error[2]['trigger']);
 
 		}
 	}
@@ -88,7 +111,7 @@ class User {
 
 			}
 
-			return $conn;
+			return FALSE;
 		}
 	}
 
@@ -98,9 +121,18 @@ class User {
 		
 	}
 
-	// Check to see if user is already in the system
-	private function checkUser($user) {
-		
+	// Verify data is legitimate
+	private function validateData($data) {
+		if (is_array($data)) {
+			foreach($data as $key => $value) {
+				if ($value == FALSE) {
+					$this->error[1]['101']['trigger'] = $key;
+					return FALSE;
+				}
+			}
+
+			return TRUE;
+		}
 	}
 
 	// Sanitize user input and prep it for work with DB
@@ -112,20 +144,47 @@ class User {
 				switch ($key) {
 					case 'email':
 						// Sanitize the field
-						$email = strip_tags($field);
+						$email = filter_var(strip_tags($field), FILTER_SANITIZE_EMAIL);
 						// Do some more 
-						$input['email'] = $email;
+						$input['email'] = (filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : FALSE;						
 						break;
 					case 'name':
-						$name = strip_tags($field);
+						$name = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
 						// Do some more
-						$input['name'] = $name;
+						$input['name'] = (preg_match("/^(([A-za-z]+[\s]{1}[A-za-z]+)|([A-Za-z]+))$/m", $name)) ? $name : FALSE;
 						break;
+					default:
+						// Decide what to do with the array.
+						echo "There was an error with the form data";
 				}
 			}
 
 			return $input;
 		}
+	}
+
+	// Check to see if user is already in the system
+	private function checkUser($user) {
+		// Query the database to see if a result is returned
+		$stmt = $this->conn->prepare("SELECT * FROM `users` WHERE `email` = :email");
+		$stmt->bindValue(':email', $user['email']);
+		$stmt->execute();
+
+		if ($stmt->rowCount() > 0) {
+			return FALSE;
+		} else {
+			return TRUE;
+		}
+	}
+
+	private function encryptPass($password) {
+		// Encrypt password
+	}
+
+	private function registerUser($user) {
+		// process password
+
+		$register = $this->conn->prepare("INSERT INTO `users` (username, password, email) VALUES (:username, :password, :email)");
 	}
 
 	// Create User
@@ -136,13 +195,20 @@ class User {
 			// Sanitize the user information
 			$input = $this->sanitizeInput($info);
 
-			// Test
-			var_dump($input);
+			// Make sure data is good before working with DB
+			if ($this->validateData($input)) {
 
-			// Check if the user is already registered
+				// Check if the user is already registered
+				if ($this->checkUser($input)) {
 
-			// Register user
+					// Register user
 
+				}
+			} else {
+				var_dump($this->error[1]);
+
+				return FALSE;
+			}
 			// Return 
 
 		}
