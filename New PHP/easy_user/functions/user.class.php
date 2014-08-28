@@ -27,7 +27,9 @@ class User {
 	// Config array
 	private $config = array(
 		'db' => array(
+			// Don't use root!
 			'username' => 'root',
+			// And come up with a better password!
 			'password' => 'root',
 			'host' => 'localhost',
 			'db_name' => 'user_system'
@@ -178,13 +180,37 @@ class User {
 	}
 
 	private function encryptPass($password) {
-		// Encrypt password
+		// Encrypt password //
+		// Grab PW
+
+		// Generate CSPRNG salt
+		$salt = mcrypt_create_iv(mcrypt_get_iv_size(MCRYPT_CAST_256, MCRYPT_MODE_CFB), MCRYPT_DEV_URANDOM);
+		// Convert strings to arrays for processing
+		if ($salt <= $password) {
+			$left = str_split($salt);
+			$right = str_split($password);
+		} else {
+			$left = str_split($password);
+			$right = str_split($salt);
+		}
 		
+		$i = 0;
+		foreach($left as $char) {
+			// 
+			// echo (ord($char) . "\n");
+			echo "$i";
+			$i++;
+		}
+
+		// Figure out which is shorter PW or SALT
+		// Loop through the smaller string 
+		// For each character, run the algorithm and figure out where to insert current char in the larger string
+		// Hash pw+salt with bcrypt
+
 	}
 
 	private function registerUser($user) {
 		// process password
-		
 
 		$register = $this->conn->prepare("INSERT INTO `users` (username, password, email) VALUES (:username, :password, :email)");
 	}
@@ -204,6 +230,7 @@ class User {
 				if ($this->checkUser($input)) {
 
 					// Register user
+					$this->encryptPass($info['name']);
 					
 				}
 			} else {
