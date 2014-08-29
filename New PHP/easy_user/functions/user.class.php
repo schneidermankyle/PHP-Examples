@@ -186,6 +186,7 @@ class User {
 		// Generate CSPRNG salt
 		$salt = mcrypt_create_iv(mcrypt_get_iv_size(MCRYPT_CAST_256, MCRYPT_MODE_CFB), MCRYPT_DEV_URANDOM);
 		// Convert strings to arrays for processing
+		// Figure out which is shorter PW or SALT
 		if ($salt <= $password) {
 			$left = str_split($salt);
 			$right = str_split($password);
@@ -195,16 +196,19 @@ class User {
 		}
 		
 		$i = 0;
+
+		// Loop through the smaller string 
+
 		foreach($left as $char) {
+			// For each character, run the algorithm and figure out where to insert current char in the larger string
 			// 
-			// echo (ord($char) . "\n");
+			echo (ord($char) . "\n");
 			echo "$i";
 			$i++;
 		}
 
-		// Figure out which is shorter PW or SALT
-		// Loop through the smaller string 
-		// For each character, run the algorithm and figure out where to insert current char in the larger string
+		
+		
 		// Hash pw+salt with bcrypt
 
 	}
