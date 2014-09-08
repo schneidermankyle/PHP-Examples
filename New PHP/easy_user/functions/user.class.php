@@ -179,15 +179,15 @@ class User {
 		}
 	}
 
-	private function encryptPass($password) {
+	private function encryptPass($password, $salt = '') {
 		// Encrypt password //
-		// Grab PW
 
 		// Generate CSPRNG salt
-		$salt = mcrypt_create_iv(mcrypt_get_iv_size(MCRYPT_CAST_256, MCRYPT_MODE_CFB), MCRYPT_DEV_URANDOM);
+		$salt = (!$salt) ? mcrypt_create_iv(mcrypt_get_iv_size(MCRYPT_CAST_256, MCRYPT_MODE_CFB), MCRYPT_DEV_URANDOM) : $salt;
+
 		// Convert strings to arrays for processing
 		// Figure out which is shorter PW or SALT
-		if ($salt <= $password) {
+		if ($salt >= $password) {
 			$left = str_split($salt);
 			$right = str_split($password);
 		} else {
@@ -196,20 +196,27 @@ class User {
 		}
 		
 		$i = 0;
+		$const = count($left);
 
 		// Loop through the smaller string 
-
 		foreach($left as $char) {
 			// For each character, run the algorithm and figure out where to insert current char in the larger string
-			// 
-			echo (ord($char) . "\n");
-			echo "$i";
+			$number = abs(floor((ord($char) - ord($right[$i])) / $const));
+			$number = ($number > 0) ? ($number - 1) : $number;
+			
+			array_splice($left, $number, 0, $right[$i]);
 			$i++;
 		}
 
-		
-		
-		// Hash pw+salt with bcrypt
+		// Hash it out		
+		$prehash = implode('', $left);
+		$hash = hash_pbkdf2("whirlpool", $prehash, $salt, 1000, 0);
+
+		// return hash + salt
+		return array(
+			'pass' => $hash,
+			'salt' => $salt
+		);
 
 	}
 
@@ -234,8 +241,8 @@ class User {
 				if ($this->checkUser($input)) {
 
 					// Register user
-					$this->encryptPass($info['name']);
-					
+					// $this->encryptPass($info['name']);
+					var_dump($this->encryptPass('Pa$$worD12') );
 				}
 			} else {
 				var_dump($this->error[1]);
