@@ -47,6 +47,10 @@ class User {
 			'102' => array(
 				'error' => 'User is already registered',
 				'trigger' => ''
+			),
+			'103' => array(
+				'error' => 'Unexpected form data',
+				'trigger' => ''
 			)
 		),
 		// Database Errors
@@ -60,7 +64,7 @@ class User {
 	public $conn;
 
 	// Create the DB
-	private function createDb() {
+	private function createDb($config) {
 		try {
 			// Create a temporary connection to create database schema
 			$temp = new PDO("mysql:host=" . $this->config['db']['host'] . ";",
@@ -72,7 +76,10 @@ class User {
 				`id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
 				`username` VARCHAR(45) NOT NULL,
 				`password` VARCHAR(256) NOT NULL,
+				`salt` VARCHAR(256) NOT NULL,
 				`email` VARCHAR(254) NULL,
+				`phone` VARCHAR(15) NULL,
+				`name` VARCHAR(25) NOT NULL,
 				PRIMARY KEY (`id`));'
 			);
 
@@ -155,9 +162,19 @@ class User {
 						// Do some more
 						$input['name'] = (preg_match("/^(([A-za-z]+[\s]{1}[A-za-z]+)|([A-Za-z]+))$/m", $name)) ? $name : FALSE;
 						break;
+					case 'phone':
+						$phone = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
+						// Do some regex
+						$input['phone'] = (preg_match("/^\s*(?:\+?(\d{1,3}))?([-. (]*(\d{3})[-. )]*)?((\d{3})[-. ]*(\d{2,4})(?:[-.x ]*(\d+))?)\s*$/m", $phone)) ? $phone : FALSE;
+						break;
+					case 'password':
+						// We really don't want to limit passwords, more just ensure they aren't passing anything crazy in
+						$password = '';
+						
+						break;
 					default:
 						// Decide what to do with the array.
-						echo "There was an error with the form data";
+						var_dump($this->error[1]['103']['error']);
 				}
 			}
 
@@ -187,7 +204,7 @@ class User {
 
 		// Convert strings to arrays for processing
 		// Figure out which is shorter PW or SALT
-		if ($salt >= $password) {
+		if (strlen($salt) >= strlen($password)) {
 			$left = str_split($salt);
 			$right = str_split($password);
 		} else {
@@ -221,9 +238,23 @@ class User {
 	}
 
 	private function registerUser($user) {
-		// process password
+		if (is_array($user)) {
+			// Update database
 
-		$register = $this->conn->prepare("INSERT INTO `users` (username, password, email) VALUES (:username, :password, :email)");
+			$register = $this->conn->prepare("INSERT INTO `users` (username, password, salt, email, phone, name) VALUES (:username, :password, :salt, :email, :phone, :name)");
+			$register->execute(array('username' => $user['email'], 'password' => $user['password']['pass'], 'salt' => $user['password']['salt'], 'email' => $user['email'], 'phone' => $user['phone'], 'name' => $user['name']));
+
+			if ($register->rowCount() > 0) {
+				echo "rows updated";
+			} else {
+				echo "Failed";
+			}
+
+		} else {
+
+			echo ($this->error[1]['103']['error']);
+
+		}
 	}
 
 	// Create User
@@ -240,21 +271,29 @@ class User {
 				// Check if the user is already registered
 				if ($this->checkUser($input)) {
 
+					// Encrypt password
+					$info['password'] = $this->encryptPass($info['name']);
+
 					// Register user
-					// $this->encryptPass($info['name']);
-					var_dump($this->encryptPass('Pa$$worD12') );
+					$this->registerUser($info);
+
+				} else {
+					var_dump($this->error[1]['102']);
 				}
+
 			} else {
-				var_dump($this->error[1]);
+				var_dump($this->error[1]['101']);
 
 				return FALSE;
 			}
 			// Return 
-
 		}
 
+	}
 
-		// Input user information into the database 
+	// Login User
+	public function loginuser($info) {
+
 	}
 
 
