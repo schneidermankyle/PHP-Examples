@@ -33,6 +33,9 @@ class User {
 			'password' => 'root',
 			'host' => 'localhost',
 			'db_name' => 'user_system'
+		),
+		'user' => array(
+			'default_login_attempts' => 5
 		)
 	);
 
@@ -50,6 +53,14 @@ class User {
 			),
 			'103' => array(
 				'error' => 'Unexpected form data',
+				'trigger' => ''
+			),
+			'104' => array(
+				'error' => 'Erorr user/password mismatch',
+				'trigger' => ''
+			),
+			'105' => array(
+				'error' => 'Error, please wait a few seconds before trying to login again',
 				'trigger' => ''
 			)
 		),
@@ -80,6 +91,8 @@ class User {
 				`email` VARCHAR(254) NULL,
 				`phone` VARCHAR(15) NULL,
 				`name` VARCHAR(25) NOT NULL,
+				`last_login_attempt` INT(20) NOT NULL DEFAULT ' . 0 . ',
+				`failed_attempts` INT(1) NOT NULL DEFAULT ' . 0 . ',
 				PRIMARY KEY (`id`));'
 			);
 
@@ -157,6 +170,12 @@ class User {
 						// Do some more 
 						$input['email'] = (filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : FALSE;						
 						break;
+					case 'username':
+						// Change this if you would like non email login username
+						$username = filter_var(strip_tags($field), FILTER_SANITIZE_EMAIL);
+						// Do some more 
+						$input['username'] = (filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : FALSE;						
+						break;
 					case 'name':
 						$name = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
 						// Do some more
@@ -169,8 +188,9 @@ class User {
 						break;
 					case 'password':
 						// We really don't want to limit passwords, more just ensure they aren't passing anything crazy in
-						$password = '';
-						
+						$password = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
+
+						$input['password'] = $password;
 						break;
 					default:
 						// Decide what to do with the array.
@@ -190,9 +210,10 @@ class User {
 		$stmt->execute();
 
 		if ($stmt->rowCount() > 0) {
-			return FALSE;
+			// Since there is a user, go ahead and return data
+			return $stmt->fetch(PDO::FETCH_ASSOC);
 		} else {
-			return TRUE;
+			return FALSE;
 		}
 	}
 
@@ -260,7 +281,7 @@ class User {
 	// Create User
 	public function createUser($info) {
 		// Validate user input
-		if ($info['email'] && $info['name']) {
+		if (isset($info['email'], $info['name'])) {
 			
 			// Sanitize the user information
 			$input = $this->sanitizeInput($info);
@@ -269,7 +290,7 @@ class User {
 			if ($this->validateData($input)) {
 
 				// Check if the user is already registered
-				if ($this->checkUser($input)) {
+				if (!$this->checkUser($input)) {
 
 					// Encrypt password
 					$info['password'] = $this->encryptPass($info['name']);
@@ -292,7 +313,42 @@ class User {
 	}
 
 	// Login User
-	public function loginuser($info) {
+	public function loginuser($info, $token = '') {
+		// Sanitize information
+		if (isset($info['email'], $info['password']) ) {
+			// Make sure everything is valid
+
+			$input = $this->sanitizeInput($info);
+
+			if ($this->validateData($input)) {
+				// Grab relevent user information from DB
+				$user = $this->checkUser($input);
+
+				if ($user) {
+					// If there has been five failed attempts, lock account for 15 min
+					$delay = ($user['failed_attempts'] < $this->config['user']['default_login_attempts']) ? pow($user['failed_attempts'], 2) : 900;
+
+					// Check last login time, failed logins, and nonce
+					if (abs(time() - $user['last_login_attempt']) > $delay) {
+						// Make sure this isn't a replay attack
+						// On page load, generate a token and store it into session
+						// Pass the token with the login 
+
+
+						// If pass, check entered password
+
+						// If match, set active session	
+					} else {
+						echo ($this->error[1]['105']['error']);
+					}
+
+				} else {
+					echo ($this->error[1]['104']['error']);
+				}
+				
+			}
+
+		}
 
 	}
 
