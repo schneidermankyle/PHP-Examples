@@ -13,4 +13,11 @@ $test = array(
 );
 
 // $user->createUser($test);
-$user->loginUser($test);
+// $user->loginUser($test);
+
+
+if ($user->verifyUser()) {
+	echo "User verified";
+}
+
+$user->logoutUser();

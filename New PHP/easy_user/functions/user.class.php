@@ -62,6 +62,10 @@ class User {
 			'105' => array(
 				'error' => 'Error, please wait a few seconds before trying to login again',
 				'trigger' => ''
+			),
+			'106' => array(
+				'error' => 'Error, your session has timed out',
+				'trigger' => ''
 			)
 		),
 		// Database Errors
@@ -174,9 +178,9 @@ class User {
 						break;
 					case 'username':
 						// Change this if you would like non email login username
-						$username = filter_var(strip_tags($field), FILTER_SANITIZE_EMAIL);
+						$username = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
 						// Do some more 
-						$input['username'] = (filter_var($email, FILTER_VALIDATE_EMAIL)) ? $email : FALSE;						
+						$input['username'] = (filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH)) ? $username : FALSE;						
 						break;
 					case 'name':
 						$name = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
@@ -335,12 +339,12 @@ class User {
 		if (isset($username)) {
 			$failed = $count + 1;
 
-			$count = $this->conn->prepare("UPDATE `users` SET failed_attempts = :count WHERE `username` = :username");
-			$count->execute(array('count' => $count, 'username' => $username));
+			$update = $this->conn->prepare("UPDATE `users` SET failed_attempts = :count WHERE `username` = :username");
+			$update->execute(array('count' => $failed, 'username' => $username));
 
-			if ($count->rowCount() == 0) {
+			if ($update->rowCount() == 0) {
 				// For error handling
-				echo ('something went wrong with failed attampts');
+				// echo ('something went wrong with failed attampts');
 			}
 		}
 	}
@@ -391,6 +395,19 @@ class User {
 		}
 	}
 
+	// Get Token
+	private function getToken($username) {
+		$grab = $this->conn->prepare("SELECT `token` FROM `users` WHERE `username` = :username");
+		$grab->bindValue(':username', $username);
+		$grab->execute();
+
+		if ($grab->rowCount() > 0) {
+			return $grab->fetchColumn();
+		} else {
+			return FALSE;
+		}
+	}
+
 	// Login User
 	public function loginuser($info) {
 		// Sanitize information
@@ -426,8 +443,11 @@ class User {
 							// Set token to db and session
 							$this->setToken($user['email'], $token);
 
-							// Redirect to ssl
+							// Reset failed attempts
+							$this->setFailedAttempt($user['email'], -1);
 
+							// Redirect to ssl
+							echo ("This is good to redirect now");
 
 						} else {
 							// Passwords are bad, figure this out.
@@ -435,6 +455,7 @@ class User {
 
 							// Set failed attempts
 							$this->setFailedAttempt($user['email'], $user['failed_attempts']);
+
 						}
 						
 					} else {
@@ -451,16 +472,36 @@ class User {
 
 	}
 
-
-	// Login user
-
 	// Verify Login
+	public function verifyUser() {
+
+		// Check that a user is logged in and the timout has not occured.
+		if (time() <= $_SESSION['timeout'] && isset($_SESSION['username'])) {
+			// Verify token
+			if ($_SESSION['token'] == $this->getToken($_SESSION['username']) && strlen($_SESSION['token']) == 128) {
+				// Update session timout
+				$_SESSION['timeout'] = (time() + 900);
+
+				return TRUE;
+			} else {
+				// This will be removed
+				echo "Error with tokens";
+				return FALSE;
+			}
+		} else {
+			// This will be removed as well
+			var_dump($error[1]['106']);
+			return FALSE;
+		}
+	}
 
 	// Logout user
+	public function logoutUser() {
+		session_destroy();
+		session_unset();
 
-
-
-
-
+		$self = $_SERVER['PHP_SELF'];
+		header("Refresh: 5; url=$self");
+	}
 
 }
