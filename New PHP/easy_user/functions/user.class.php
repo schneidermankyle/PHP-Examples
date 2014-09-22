@@ -93,6 +93,8 @@ class User {
 				`name` VARCHAR(25) NOT NULL,
 				`last_login_attempt` INT(20) NOT NULL DEFAULT ' . 0 . ',
 				`failed_attempts` INT(1) NOT NULL DEFAULT ' . 0 . ',
+				`token` VARCHAR(256) NULL,
+				`timeout` INT(20) NULL,
 				PRIMARY KEY (`id`));'
 			);
 
@@ -221,7 +223,7 @@ class User {
 		// Encrypt password //
 
 		// Generate CSPRNG salt
-		$salt = (!$salt) ? mcrypt_create_iv(mcrypt_get_iv_size(MCRYPT_CAST_256, MCRYPT_MODE_CFB), MCRYPT_DEV_URANDOM) : $salt;
+		$salt = (!$salt) ? base64_encode(mcrypt_create_iv(mcrypt_get_iv_size(MCRYPT_CAST_256, MCRYPT_MODE_CFB), MCRYPT_DEV_URANDOM)) : $salt;
 
 		// Convert strings to arrays for processing
 		// Figure out which is shorter PW or SALT
@@ -312,8 +314,85 @@ class User {
 
 	}
 
+	// Set last login attempt
+	private function setLoginAttempt($username) {
+		if (isset($username)) {
+			$time = time();
+
+			$attempt = $this->conn->prepare("UPDATE `users` SET last_login_attempt = :attempt WHERE `username` = :username");
+			$attempt->execute(array('attempt' => $time, 'username' => $username));
+
+			if ($attempt->rowCount() == 0) {
+				// This is for error handling
+
+				echo ('something went wrong with login attempts');
+			}
+		}
+	}
+
+	// Set the number of failed attampts
+	private function setFailedAttempt($username, $count) {
+		if (isset($username)) {
+			$failed = $count + 1;
+
+			$count = $this->conn->prepare("UPDATE `users` SET failed_attempts = :count WHERE `username` = :username");
+			$count->execute(array('count' => $count, 'username' => $username));
+
+			if ($count->rowCount() == 0) {
+				// For error handling
+				echo ('something went wrong with failed attampts');
+			}
+		}
+	}
+
+	// Number generateion
+	private function randomNumber($min, $max) {
+		// Set our range
+		$difference = $max - $min;
+		// If range is not negative
+		if ($difference > 0 ) {
+			$bytes = (int) (log($difference, 2) / 8 ) + 1;
+			$bits = (int) (log($difference, 2)) + 1;
+			$filter = (int) (1 << $bits) - 1;
+			do {
+				// Generate Random number
+				$rnd = hexdec(bin2hex(openssl_random_pseudo_bytes($bytes, $s)));
+				$rnd = $rnd & $filter;
+			} while ($rnd >= $difference);
+			// Return our random number
+			return $min + $rnd;
+		} else {
+			// Otherwise, return just the minimum number
+			return $min;
+		}
+	}
+
+	// Generate random tokens
+	private function generateToken($length) {
+		$token = '';
+		$string = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
+		for ($i = 0; $i < $length; $i++) {
+			$token .= $string[$this->randomNumber(0, strlen($string))];
+		}
+
+		return $token;
+	}
+
+	// Set token to DB
+	private function setToken($username, $token) {
+		$_SESSION['token'] = $token;
+
+		$update = $this->conn->prepare("UPDATE `users` SET `token` = :token WHERE `username` = :username");
+		$update->execute(array('token' => $token, 'username' => $username));
+
+		if ($update->rowCount() == 0) {
+			// Remove before release. for error handling
+			echo ('There was an error handling token');
+		}
+	}
+
 	// Login User
-	public function loginuser($info, $token = '') {
+	public function loginuser($info) {
 		// Sanitize information
 		if (isset($info['email'], $info['password']) ) {
 			// Make sure everything is valid
@@ -330,14 +409,34 @@ class User {
 
 					// Check last login time, failed logins, and nonce
 					if (abs(time() - $user['last_login_attempt']) > $delay) {
-						// Make sure this isn't a replay attack
-						// On page load, generate a token and store it into session
-						// Pass the token with the login 
+						// Set this time as the last login attempt
+						$this->setLoginAttempt($input['email']);
+
+						if ($this->encryptPass($input['password'], $user['salt'])['pass'] === $user['password']) {
+							// Regenerate session id
+							session_regenerate_id(TRUE);
+
+							// If match, set info to active session
+							$_SESSION['username'] = $user['email'];
+							$_SESSION['timeout'] = (time() + 900);
+
+							// Generate session token
+							$token = $this->generateToken(128);
+
+							// Set token to db and session
+							$this->setToken($user['email'], $token);
+
+							// Redirect to ssl
 
 
-						// If pass, check entered password
+						} else {
+							// Passwords are bad, figure this out.
+							var_dump($this->error[1]['104']['error']);
 
-						// If match, set active session	
+							// Set failed attempts
+							$this->setFailedAttempt($user['email'], $user['failed_attempts']);
+						}
+						
 					} else {
 						echo ($this->error[1]['105']['error']);
 					}
