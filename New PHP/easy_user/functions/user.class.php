@@ -31,11 +31,16 @@ class User {
 			'username' => 'root',
 			// And come up with a better password!
 			'password' => 'root',
+			// Where is your database located?
 			'host' => 'localhost',
+			// Your database name
 			'db_name' => 'user_system'
 		),
 		'user' => array(
-			'default_login_attempts' => 5
+			// How many login attempts before temporary lock
+			'default_login_attempts' => 5,
+			// How long should session tokens be
+			'session_token_length' => 128
 		)
 	);
 
@@ -56,7 +61,7 @@ class User {
 				'trigger' => ''
 			),
 			'104' => array(
-				'error' => 'Erorr user/password mismatch',
+				'error' => 'Erorr user/password mismatch, have you forgotten your password?',
 				'trigger' => ''
 			),
 			'105' => array(
@@ -65,6 +70,10 @@ class User {
 			),
 			'106' => array(
 				'error' => 'Error, your session has timed out',
+				'trigger' => ''
+			),
+			'107' => array(
+				'error' => 'Error, your account is not allowed to do the requested action at this time',
 				'trigger' => ''
 			)
 		),
@@ -98,7 +107,7 @@ class User {
 				`last_login_attempt` INT(20) NOT NULL DEFAULT ' . 0 . ',
 				`failed_attempts` INT(1) NOT NULL DEFAULT ' . 0 . ',
 				`token` VARCHAR(256) NULL,
-				`timeout` INT(20) NULL,
+				`status` VARCHAR(20) NOT NULL DEFAULT active,
 				PRIMARY KEY (`id`));'
 			);
 
@@ -143,17 +152,14 @@ class User {
 		}
 	}
 
-	// construct sets up everything we need, such as the db config
-	public function __construct() {
-		$this->conn = $this->constructDb();
-		
-	}
-
 	// Verify data is legitimate
 	private function validateData($data) {
+		// Check that data is passed correctly
 		if (is_array($data)) {
 			foreach($data as $key => $value) {
+				// Check to see if there were any reported errors
 				if ($value == FALSE) {
+					// This needs to change
 					$this->error[1]['101']['trigger'] = $key;
 					return FALSE;
 				}
@@ -178,9 +184,9 @@ class User {
 						break;
 					case 'username':
 						// Change this if you would like non email login username
-						$username = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
+						$username = filter_var(strip_tags($field), FILTER_SANITIZE_EMAIL);
 						// Do some more 
-						$input['username'] = (filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH)) ? $username : FALSE;						
+						$input['username'] = (filter_var($username, FILTER_VALIDATE_EMAIL)) ? $username : FALSE;					
 						break;
 					case 'name':
 						$name = filter_var(strip_tags($field), FILTER_SANITIZE_STRING, FILTER_FLAG_STRIP_HIGH);
@@ -209,9 +215,12 @@ class User {
 	}
 
 	// Check to see if user is already in the system
-	private function checkUser($user) {
+	private function checkUser($user, $options = '') {
+		// See what is wanted.
+		$selection = (!$options) ? '*' : $options;
+
 		// Query the database to see if a result is returned
-		$stmt = $this->conn->prepare("SELECT * FROM `users` WHERE `email` = :email");
+		$stmt = $this->conn->prepare("SELECT $selection FROM `users` WHERE `email` = :email");
 		$stmt->bindValue(':email', $user['email']);
 		$stmt->execute();
 
@@ -254,7 +263,7 @@ class User {
 
 		// Hash it out		
 		$prehash = implode('', $left);
-		$hash = hash_pbkdf2("whirlpool", $prehash, $salt, 1000, 0);
+		$hash = hash_pbkdf2("whirlpool", $prehash, $salt, 500, 0);
 
 		// return hash + salt
 		return array(
@@ -264,6 +273,7 @@ class User {
 
 	}
 
+	// Put user into database
 	private function registerUser($user) {
 		if (is_array($user)) {
 			// Update database
@@ -284,38 +294,37 @@ class User {
 		}
 	}
 
-	// Create User
-	public function createUser($info) {
-		// Validate user input
-		if (isset($info['email'], $info['name'])) {
-			
-			// Sanitize the user information
-			$input = $this->sanitizeInput($info);
+	// Update user info
+	private function updateUser($user, $username) {
+		if (is_array($user)) {
+			// build our query string dynamically
+			$set = '';
+			$data = array();
 
-			// Make sure data is good before working with DB
-			if ($this->validateData($input)) {
-
-				// Check if the user is already registered
-				if (!$this->checkUser($input)) {
-
-					// Encrypt password
-					$info['password'] = $this->encryptPass($info['name']);
-
-					// Register user
-					$this->registerUser($info);
-
+			foreach ($user as $key => $field) {
+				if ($key == 'password') {
+					$password = $this->encryptPass($field);
+					$set .= 'password = :password, salt = :salt, ';
+					$data['password'] = $password['pass'];
+					$data['salt'] = $password['salt'];
 				} else {
-					var_dump($this->error[1]['102']);
+					$set .= "$key = :$key, ";
+					$data[$key] = $field;
 				}
-
-			} else {
-				var_dump($this->error[1]['101']);
-
-				return FALSE;
 			}
-			// Return 
-		}
 
+			$set = rtrim($set, ", ");
+			$data['username'] = "$username";
+			
+			// Execute query
+			$update = $this->conn->prepare("UPDATE `users` SET $set WHERE `username` = :username");
+			$update->execute($data);
+
+			// Check if it succeeded in updating
+			if ($update->rowCount() > 0) {
+				echo "Rows updated";
+			}
+		}
 	}
 
 	// Set last login attempt
@@ -408,8 +417,79 @@ class User {
 		}
 	}
 
+	// Get account standing
+	private function getStatus($username) {
+		$get = $this->conn->prepare("SELECT `status` FROM `users` WHERE `username` = :username");
+		$get->bindValue(':username', $username);
+		$get->execute();
+
+		if ($get->rowCount() > 0) {
+			return $get->fetchColumn();
+		} else {
+			return FALSE;
+		}
+	}
+
+	// Set Status
+	private function setStatus($username, $status) {
+		$set = $this->conn->prepare("UPDATE `users` SET `status` = :status WHERE `username` = :username");
+		$set->execute(array('status' => $status, 'username' => $username));
+
+		if ($set->rowCount() > 0) {
+			return TRUE;
+		} else {
+			return FALSE;
+		}
+	}
+
+	// construct sets up everything we need, such as the db config
+	public function __construct() {
+		$this->conn = $this->constructDb();
+		
+	}
+
+	// Create User
+	public function createUser($info) {
+
+		// Validate user input
+		if (isset($info['email'], $info['name'])) {
+
+			// Sanitize the user information
+			$input = $this->sanitizeInput($info);
+
+			// Make sure data is good before working with DB
+			if ($this->validateData($input)) {
+
+				// Check if the user is already registered
+				if (!$this->checkUser($input)) {
+
+					// Encrypt password
+					$info['password'] = $this->encryptPass($info['name']);
+
+					// Register user
+					$this->registerUser($info);
+
+					return TRUE;
+
+				} else {
+					var_dump($this->error[1]['102']);
+
+					return FALSE;
+				}
+
+			} else {
+				var_dump($this->error[1]['101']);
+
+				return FALSE;
+			}
+
+		}
+
+	}
+
 	// Login User
 	public function loginuser($info) {
+
 		// Sanitize information
 		if (isset($info['email'], $info['password']) ) {
 			// Make sure everything is valid
@@ -421,46 +501,64 @@ class User {
 				$user = $this->checkUser($input);
 
 				if ($user) {
-					// If there has been five failed attempts, lock account for 15 min
-					$delay = ($user['failed_attempts'] < $this->config['user']['default_login_attempts']) ? pow($user['failed_attempts'], 2) : 900;
 
-					// Check last login time, failed logins, and nonce
-					if (abs(time() - $user['last_login_attempt']) > $delay) {
-						// Set this time as the last login attempt
-						$this->setLoginAttempt($input['email']);
+					switch ($user['status']) {
+						case 'active':
+							// If there has been five failed attempts, lock account for 15 min, revisit this per Grahams recommendation
+							$delay = ($user['failed_attempts'] < $this->config['user']['default_login_attempts']) ? pow($user['failed_attempts'], 2) : 900;
 
-						if ($this->encryptPass($input['password'], $user['salt'])['pass'] === $user['password']) {
-							// Regenerate session id
-							session_regenerate_id(TRUE);
+							// Check last login time, failed logins, and nonce
+							if (abs(time() - $user['last_login_attempt']) > $delay) {
+								// Set this time as the last login attempt
+								$this->setLoginAttempt($input['email']);
 
-							// If match, set info to active session
-							$_SESSION['username'] = $user['email'];
-							$_SESSION['timeout'] = (time() + 900);
+								if ($this->encryptPass($input['password'], $user['salt'])['pass'] === $user['password']) {
+									// Regenerate session id
+									session_regenerate_id(TRUE);
 
-							// Generate session token
-							$token = $this->generateToken(128);
+									// If match, set info to active session
+									$_SESSION['username'] = $user['email'];
+									$_SESSION['timeout'] = (time() + 900);
 
-							// Set token to db and session
-							$this->setToken($user['email'], $token);
+									// Generate session token
+									$token = $this->generateToken($this->config['user']['session_token_length']);
 
-							// Reset failed attempts
-							$this->setFailedAttempt($user['email'], -1);
+									// Set token to db and session
+									$this->setToken($user['email'], $token);
 
-							// Redirect to ssl
-							echo ("This is good to redirect now");
+									// Reset failed attempts
+									$this->setFailedAttempt($user['email'], -1);
 
-						} else {
-							// Passwords are bad, figure this out.
-							var_dump($this->error[1]['104']['error']);
+									// Redirect to ssl
+									echo ("This is good to redirect now");
 
-							// Set failed attempts
-							$this->setFailedAttempt($user['email'], $user['failed_attempts']);
+								} else {
+									// Passwords are bad, figure this out.
+									var_dump($this->error[1]['104']['error']);
 
-						}
-						
-					} else {
-						echo ($this->error[1]['105']['error']);
+									// Set failed attempts
+									$this->setFailedAttempt($user['email'], $user['failed_attempts']);
+
+								}
+								
+							} else {
+								echo ($this->error[1]['105']['error']);
+							}
+
+							break;
+
+						case 'lost':
+							echo ('You must update your password to continue');
+							// Since this account is marked as lost, we must get a bit more info 
+
+							// Need to add instructions for password reset
+							break;
+						default:
+							die('Something went wrong');
+							// Should not come to this response.
+							break;
 					}
+
 
 				} else {
 					echo ($this->error[1]['104']['error']);
@@ -486,11 +584,17 @@ class User {
 			} else {
 				// This will be removed
 				echo "Error with tokens";
+
+				$this->logoutUser();
+
 				return FALSE;
 			}
 		} else {
 			// This will be removed as well
-			var_dump($error[1]['106']);
+			var_dump($this->error[1]['106']);
+
+			$this->logoutUser();
+
 			return FALSE;
 		}
 	}
@@ -504,4 +608,102 @@ class User {
 		header("Refresh: 5; url=$self");
 	}
 
+	// Retreive User Info
+	public function retreiveUserInfo($options = '') {
+		// Sanitize email from session storage
+		$input = $this->sanitizeInput(array('email' => $_SESSION['username']));
+
+		// If sanitary, go ahead and retreive user info
+		if ($this->validateData($input)) {
+			
+			// Checkuser doubles as our general call to the user db, we pass in the username and a string of columns that we want to call
+			$user = $this->checkUser($input, $options);
+
+			return $user;
+		}
+	}
+
+	// Set User Info
+	public function updateUserInfo($input) {
+		// Santize all of our input data
+		$input = $this->sanitizeInput($input);
+		$user = $this->sanitizeInput(array('email' => $_SESSION['username']));
+
+		// Double check that no errors were returned while sanitizing
+		if ($this->validateData($input) && $this->validateData($user)) {
+
+			// Ensure the current account hasn't expired and is set
+			if (time() <= $_SESSION['timeout'] && isset($_SESSION['username'])) {
+
+				// Ensure that the current requester has the proper token, needs to be augmented with tokens on referring link
+				if ($_SESSION['token'] == $this->getToken($_SESSION['username']) && strlen($_SESSION['token']) == 128 ) {
+
+					if (strtolower($this->getStatus($user['email'])) == 'active') {
+						// It is ok to update user info
+						$this->updateUser($input, $user['email']);
+
+					} else {
+						var_dump($error[1]['107']['error']);
+					}
+
+				} else {
+					var_dump($error[1]['101']['error']);
+				}
+
+			} else {
+				var_dump($error[1]['106']['error']);
+			}
+
+		} else {
+			var_dump($error[1]['101']['error']);
+		}
+	
+	}
+
+	// Reset / forgot password
+	public function resetPassword($input) {
+
+		$input = (is_array($input)) ? $input : array('email' => $input);
+
+		// If reset is needed, walk through the steps.
+		$input = $this->sanitizeInput($input);
+
+		if ($this->validateData($input)) {
+			
+
+			$user = $this->checkUser($input, 'username, name');
+			
+			if ( isset($user['username']) ) {
+				// First we set status to lost
+				$this->setStatus($user['username'], 'lost');
+
+				// Generate and encrypt a new temporary password
+				$tempPassword = $this->generateToken(10);
+
+				// Send Password to email address
+				$to = $input['email'];
+				$subject = 'Forgotten password';
+				$message = 'Dear ' . $user['name'] . ", \r\n A password reset was requested for your Rackmounts Etc account. For your safety we have locked your account and changed your password to a temporary one provided below. Please visit www.rackmountsetc.com and use the following password to log in and secure your account. \r\n \r\n Password: $tempPassword \r\n \r\n Sincerely, \r\n - Rackmounts Etc";
+				$headers = 'From: support@rackmountsetc.com' . "\r\n" .
+							'Reply-To: support@rackmountsetc.com' . "\r\n" .
+							'X-Mailer: PHP/' . phpversion();
+
+				mail($to, $subject, $message, $headers);
+
+				// Save password to DB
+				$this->updateUser(array('password' => $tempPassword), $user['username']);
+
+				echo ('An email has been sent, please check your inbox and return');
+
+			} else {
+				var_dump($error[1]['101']);
+			}
+			
+		}
+
+	}
+
+	// Disable / Enable account
+
 }
+
