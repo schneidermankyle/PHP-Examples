@@ -502,61 +502,65 @@ class User {
 
 				if ($user) {
 
-					switch ($user['status']) {
-						case 'active':
-							// If there has been five failed attempts, lock account for 15 min, revisit this per Grahams recommendation
-							$delay = ($user['failed_attempts'] < $this->config['user']['default_login_attempts']) ? pow($user['failed_attempts'], 2) : 900;
+					if ($user['status'] == 'active' || $user['status'] == 'lost') {
 
-							// Check last login time, failed logins, and nonce
-							if (abs(time() - $user['last_login_attempt']) > $delay) {
-								// Set this time as the last login attempt
-								$this->setLoginAttempt($input['email']);
+						// If there has been five failed attempts, lock account for 15 min, revisit this per Grahams recommendation
+						$delay = ($user['failed_attempts'] < $this->config['user']['default_login_attempts']) ? pow($user['failed_attempts'], 2) : 900;
 
-								if ($this->encryptPass($input['password'], $user['salt'])['pass'] === $user['password']) {
-									// Regenerate session id
-									session_regenerate_id(TRUE);
+						// Check last login time, failed logins, and nonce
+						if (abs(time() - $user['last_login_attempt']) > $delay) {
+							// Set this time as the last login attempt
+							$this->setLoginAttempt($input['email']);
 
-									// If match, set info to active session
-									$_SESSION['username'] = $user['email'];
-									$_SESSION['timeout'] = (time() + 900);
+							if ($this->encryptPass($input['password'], $user['salt'])['pass'] === $user['password']) {
+								// Regenerate session id
+								session_regenerate_id(TRUE);
 
-									// Generate session token
-									$token = $this->generateToken($this->config['user']['session_token_length']);
+								// If match, set info to active session
+								$_SESSION['username'] = $user['email'];
+								$_SESSION['timeout'] = (time() + 900);
 
-									// Set token to db and session
-									$this->setToken($user['email'], $token);
+								// Generate session token
+								$token = $this->generateToken($this->config['user']['session_token_length']);
 
-									// Reset failed attempts
-									$this->setFailedAttempt($user['email'], -1);
+								// Set token to db and session
+								$this->setToken($user['email'], $token);
 
-									// Redirect to ssl
-									echo ("This is good to redirect now");
+								// Reset failed attempts
+								$this->setFailedAttempt($user['email'], -1);
 
-								} else {
-									// Passwords are bad, figure this out.
-									var_dump($this->error[1]['104']['error']);
+								// Redirect to ssl
+								switch ($user['status']) {
+									case 'active':
+										echo "redirect to good member area";
+										break;
+									
+									case 'lost':
+										echo "Redirect to password update";
+										break;
 
-									// Set failed attempts
-									$this->setFailedAttempt($user['email'], $user['failed_attempts']);
+									default:
+										die('something went wrong');
 
+										break;
 								}
-								
+
 							} else {
-								echo ($this->error[1]['105']['error']);
+								// Passwords are bad, figure this out.
+								var_dump($this->error[1]['104']['error']);
+
+								// Set failed attempts
+								$this->setFailedAttempt($user['email'], $user['failed_attempts']);
+
 							}
+							
+						} else {
+							echo ($this->error[1]['105']['error']);
+						}
 
-							break;
-
-						case 'lost':
-							echo ('You must update your password to continue');
-							// Since this account is marked as lost, we must get a bit more info 
-
-							// Need to add instructions for password reset
-							break;
-						default:
-							die('Something went wrong');
-							// Should not come to this response.
-							break;
+					} else {
+						die ('error with account');
+					
 					}
 
 
@@ -704,6 +708,9 @@ class User {
 	}
 
 	// Disable / Enable account
+	public function changeAccountStatus($input, $status) {
+
+	}
 
 }
 
