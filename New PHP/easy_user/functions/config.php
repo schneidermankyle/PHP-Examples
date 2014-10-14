@@ -25,8 +25,8 @@ $user->loginUser($test);
 
 
 // if ($user->verifyUser()) {
-// 	// var_dump ( $user->retreiveUserInfo('username, email, phone, name, status') );
-// 	// $user->updateUserInfo($test);
+// 	var_dump ( $user->retreiveUserInfo('username, email, phone, name, status') );
+// 	$user->updateUserInfo($test);
 // }
 
 // $user->logoutUser();
